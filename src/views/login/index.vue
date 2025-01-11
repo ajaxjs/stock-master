@@ -39,6 +39,22 @@
               </template>
             </n-input>
           </n-form-item>
+          <n-form-item path="imgcode">
+            <n-input v-model:value="formInline.imgcode" placeholder="图形验证码">
+              <template #prefix>
+                <n-icon size="18" color="#808695">
+                  <ShieldCheckmarkOutline />
+                </n-icon>
+              </template>
+            </n-input>
+            <img
+              :src="captchaSrc"
+              alt="图形验证码"
+              style="width: 110px; height: 40px"
+              class="bg-slate-200 ml-1 rounded"
+              @click="refreshCaptcha"
+            />
+          </n-form-item>
           <n-form-item class="default-color">
             <div class="flex justify-between">
               <div class="flex-initial">
@@ -85,17 +101,26 @@
 </template>
 
 <script lang="ts" setup>
-  import { reactive, ref } from 'vue';
+  import { reactive, ref, onMounted } from 'vue';
   import { useRoute, useRouter } from 'vue-router';
   import { useUserStore } from '@/store/modules/user';
   import { useMessage } from 'naive-ui';
   import { ResultEnum } from '@/enums/httpEnum';
-  import { PersonOutline, LockClosedOutline, LogoGithub, LogoFacebook } from '@vicons/ionicons5';
+  import {
+    PersonOutline,
+    LockClosedOutline,
+    LogoGithub,
+    LogoFacebook,
+    ShieldCheckmarkOutline,
+  } from '@vicons/ionicons5';
   import { PageEnum } from '@/enums/pageEnum';
   import { websiteConfig } from '@/config/website.config';
+  import { getVerifyCode } from '@/api/system/user';
+
   interface FormState {
     username: string;
     password: string;
+    imgcode: string;
   }
 
   const formRef = ref();
@@ -105,14 +130,23 @@
   const LOGIN_NAME = PageEnum.BASE_LOGIN_NAME;
 
   const formInline = reactive({
-    username: 'admin',
+    username: 'kevin',
     password: '123456',
+    imgcode: '',
     isCaptcha: true,
   });
+  const captchaSrc = ref('');
+  function refreshCaptcha() {
+    getVerifyCode().then(({ data }) => {
+      captchaSrc.value = data;
+    });
+  }
+  onMounted(refreshCaptcha);
 
   const rules = {
     username: { required: true, message: '请输入用户名', trigger: 'blur' },
     password: { required: true, message: '请输入密码', trigger: 'blur' },
+    imgcode: { required: true, message: '请输入图形验证码', trigger: 'blur' },
   };
 
   const userStore = useUserStore();
@@ -124,26 +158,32 @@
     e.preventDefault();
     formRef.value.validate(async (errors) => {
       if (!errors) {
-        const { username, password } = formInline;
+        const { username, password, imgcode } = formInline;
         message.loading('登录中...');
         loading.value = true;
 
         const params: FormState = {
           username,
           password,
+          imgcode,
         };
 
         try {
           const { code, message: msg } = await userStore.login(params);
           message.destroyAll();
+          console.log(code, ResultEnum.SUCCESS);
+
           if (code == ResultEnum.SUCCESS) {
             const toPath = decodeURIComponent((route.query?.redirect || '/') as string);
             message.success('登录成功，即将进入系统');
+            console.log(route.name, LOGIN_NAME);
+
             if (route.name === LOGIN_NAME) {
               router.replace('/');
             } else router.replace(toPath);
           } else {
-            message.info(msg || '登录失败');
+            message.error(msg || '登录失败');
+            refreshCaptcha();
           }
         } finally {
           loading.value = false;
